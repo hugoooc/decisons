@@ -163,6 +163,10 @@ export interface GameState {
   choices_made: { decisionId: string; choiceId: string }[]
   long_term_choices: number
 
+  // XP & Leveling
+  xp: number
+  level: number
+
   // Scenario flags
   recession_active: boolean
   inflation_spike_active: boolean

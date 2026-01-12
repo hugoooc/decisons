@@ -58,6 +58,8 @@ function createTestState(overrides: Partial<GameState> = {}): GameState {
     history: [],
     choices_made: [],
     long_term_choices: 0,
+    xp: 0,
+    level: 1,
     recession_active: false,
     inflation_spike_active: false,
     completed: false,

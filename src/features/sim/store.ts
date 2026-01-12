@@ -108,10 +108,31 @@ function createInitialState(): GameState {
     history: [],
     choices_made: [],
     long_term_choices: 0,
+    xp: 0,
+    level: 1,
     recession_active: false,
     inflation_spike_active: false,
     completed: false,
   }
+}
+
+// XP required per level (increases each level)
+const XP_PER_LEVEL = [0, 100, 150, 200, 250, 300, 400, 500, 600, 800, 1000]
+const getXPForLevel = (level: number): number => XP_PER_LEVEL[Math.min(level, XP_PER_LEVEL.length - 1)] || 1000
+
+// Calculate XP reward based on choice quality
+function calculateXPReward(effects: Effects, isLongTermChoice: boolean): number {
+  let xp = 50 // Base XP for making any choice
+
+  // Bonus for long-term thinking
+  if (isLongTermChoice) xp += 30
+
+  // Bonus for positive financial moves
+  if (effects.investments && effects.investments > 0) xp += 20
+  if (effects.credit_score && effects.credit_score > 0) xp += 15
+  if (effects.stress && effects.stress < 0) xp += 10
+
+  return xp
 }
 
 interface GameStore extends GameState {
@@ -119,7 +140,7 @@ interface GameStore extends GameState {
   setProfile: (profile: StartingProfile) => void
   setGoal: (goal: Goal) => void
   setEducatorMode: (enabled: boolean) => void
-  makeChoice: (decisionId: string, choiceId: string) => { newBadges: Badge[] }
+  makeChoice: (decisionId: string, choiceId: string) => { newBadges: Badge[]; xpGained: number; leveledUp: boolean; newLevel: number }
   undoLastChoice: () => boolean
   resetGame: () => void
   goToDecision: (index: number) => void // Educator mode only
@@ -164,7 +185,7 @@ export const useGameStore = create<GameStore>()(
         const choice = decision?.choices.find((c) => c.id === choiceId)
 
         if (!decision || !choice) {
-          return { newBadges: [] }
+          return { newBadges: [], xpGained: 0, leveledUp: false, newLevel: state.level }
         }
 
         // Create snapshot before changes
@@ -207,6 +228,25 @@ export const useGameStore = create<GameStore>()(
           (b) => b.unlocked && !oldBadges.find((ob) => ob.id === b.id)?.unlocked
         )
 
+        // Calculate XP reward
+        const xpGained = calculateXPReward(choice.effects as Effects, !!choice.effects.long_term_choice)
+        let newXP = state.xp + xpGained
+        let newLevel = state.level
+        let leveledUp = false
+
+        // Check for level up
+        const xpNeeded = getXPForLevel(state.level)
+        if (newXP >= xpNeeded) {
+          newXP = newXP - xpNeeded
+          newLevel = state.level + 1
+          leveledUp = true
+        }
+
+        // Bonus XP for unlocking badges
+        if (newBadges.length > 0) {
+          newXP += newBadges.length * 50
+        }
+
         // Update state
         set({
           ...newState,
@@ -217,10 +257,12 @@ export const useGameStore = create<GameStore>()(
           long_term_choices: choice.effects.long_term_choice
             ? state.long_term_choices + 1
             : state.long_term_choices,
+          xp: newXP,
+          level: newLevel,
           completed: nextDecision >= decisions.length,
         })
 
-        return { newBadges }
+        return { newBadges, xpGained, leveledUp, newLevel }
       },
 
       undoLastChoice: () => {
@@ -420,6 +462,8 @@ export const useGameStore = create<GameStore>()(
         history: state.history,
         choices_made: state.choices_made,
         long_term_choices: state.long_term_choices,
+        xp: state.xp,
+        level: state.level,
         recession_active: state.recession_active,
         inflation_spike_active: state.inflation_spike_active,
         completed: state.completed,
@@ -447,3 +491,4 @@ export const selectTotalDebt = (state: GameState) =>
 export const selectMonthlyCashFlow = (state: GameState) =>
   state.monthly_income - state.monthly_expenses
 export const selectUnlockedBadges = (state: GameState) => state.badges.filter((b) => b.unlocked)
+export const selectMaxXP = (state: GameState) => getXPForLevel(state.level)
